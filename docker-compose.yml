@@ -1,0 +1,22 @@
+services:
+  transaction-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: transaction-service:latest
+    container_name: ntt_transaction_service
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/ntt_transaction
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ntt_network
+
+networks:
+  ntt_network:
+    external: true
+    name: infra_ntt_network

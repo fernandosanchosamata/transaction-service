@@ -54,16 +54,36 @@ mvn spring-boot:run
 
 ## Levantar con Docker
 
-Primero levantar la infraestructura:
+Primero levantar la infraestructura desde la raiz del repositorio:
 
 ```powershell
 cd .\infra
-docker compose up -d
+docker compose up -d --build
 ```
 
-Este proyecto aun no incluye `Dockerfile`. Cuando se agregue, debe usar nombres
-de servicio de Docker Compose para MongoDB, Kafka, Config Server, Eureka y los
-servicios de negocio que consume.
+El `docker-compose.yml` de este microservicio usa la red externa
+`infra_ntt_network`, creada por el compose de infraestructura, y se conecta a
+MongoDB, Kafka, Config Server y Eureka usando nombres internos de Docker.
+
+Generar el jar y levantar el contenedor:
+
+```powershell
+cd ..\transaction-service
+mvn clean package
+docker compose up -d --build
+```
+
+Ver logs:
+
+```powershell
+docker compose logs -f transaction-service
+```
+
+Detener el microservicio:
+
+```powershell
+docker compose down
+```
 
 ## Tests
 
@@ -122,4 +142,3 @@ db.transactions.find().pretty()
 
 Se usa database per service logico: cada microservicio mantiene su propia base de
 datos MongoDB.
-
