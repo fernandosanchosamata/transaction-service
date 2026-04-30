@@ -5,6 +5,7 @@ import com.ntt.transaction.model.dto.AccountResponse;
 import io.reactivex.rxjava3.core.Single;
 import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -13,6 +14,7 @@ import reactor.core.publisher.Mono;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AccountClient {
 
   private static final String ACCOUNT_SERVICE_URL = "http://ACCOUNT-SERVICE/api/v1/accounts";
@@ -32,6 +34,7 @@ public class AccountClient {
   }
 
   private Single<AccountResponse> invokeAccountOperation(String path, BigDecimal amount) {
+    log.debug("Invocando operacion en Account Service. path={}, amount={}", path, amount);
     Mono<AccountResponse> response =
         webClientBuilder
             .build()
@@ -52,6 +55,15 @@ public class AccountClient {
                                         "Account Service rechazo la operacion: " + body))))
             .bodyToMono(AccountResponse.class);
 
-    return RxJava3Adapter.monoToSingle(response);
+    return RxJava3Adapter.monoToSingle(response)
+        .doOnSuccess(
+            account ->
+                log.debug("Operacion de Account Service completada. accountId={}", account.getId()))
+        .doOnError(
+            error ->
+                log.error(
+                    "Error invocando Account Service. path={}, error={}",
+                    path,
+                    error.getMessage()));
   }
 }

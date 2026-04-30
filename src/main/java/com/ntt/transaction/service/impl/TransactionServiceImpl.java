@@ -29,6 +29,11 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public Single<TransactionSaga> transfer(TransferRequest request) {
+    log.info(
+        "Iniciando transferencia. sourceId={}, targetId={}, amount={}",
+        request.getSourceAccountId(),
+        request.getTargetAccountId(),
+        request.getAmount());
     validateDistinctEndpoints(
         request.getSourceAccountId(), request.getTargetAccountId(), "transferencia");
 
@@ -55,6 +60,11 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public Single<TransactionSaga> pay(PaymentRequest request) {
+    log.info(
+        "Iniciando pago. sourceId={}, targetId={}, amount={}",
+        request.getSourceId(),
+        request.getTargetId(),
+        request.getAmount());
     validateDistinctEndpoints(request.getSourceId(), request.getTargetId(), "pago");
 
     return createSaga(
@@ -81,6 +91,7 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public Single<TransactionSaga> getTransaction(String transactionId) {
+    log.info("Consultando transaccion. transactionId={}", transactionId);
     return transactionRepository
         .findById(transactionId)
         .switchIfEmpty(Single.error(new IllegalArgumentException("Transaccion no encontrada.")));
@@ -155,7 +166,11 @@ public class TransactionServiceImpl implements TransactionService {
             .updatedAt(LocalDateTime.now())
             .build();
 
-    return transactionRepository.save(transactionSaga);
+    return transactionRepository
+        .save(transactionSaga)
+        .doOnSuccess(
+            saved ->
+                log.info("Saga creada. transactionId={}, type={}", saved.getId(), saved.getType()));
   }
 
   private Single<TransactionSaga> transition(
@@ -166,7 +181,14 @@ public class TransactionServiceImpl implements TransactionService {
     if (status != SagaStatus.COMPLETED) {
       transactionSaga.setCompletedAt(null);
     }
-    return transactionRepository.save(transactionSaga);
+    return transactionRepository
+        .save(transactionSaga)
+        .doOnSuccess(
+            saved ->
+                log.info(
+                    "Saga actualizada. transactionId={}, status={}",
+                    saved.getId(),
+                    saved.getStatus()));
   }
 
   private Single<TransactionSaga> completeSaga(TransactionSaga transactionSaga) {
@@ -177,6 +199,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     return transactionRepository
         .save(transactionSaga)
+        .doOnSuccess(saved -> log.info("Saga completada. transactionId={}", saved.getId()))
         .flatMap(
             saved ->
                 transactionKafkaPublisher
@@ -185,11 +208,19 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   private Single<TransactionSaga> failSaga(TransactionSaga transactionSaga, Throwable error) {
+    log.warn(
+        "Saga fallida. transactionId={}, error={}",
+        transactionSaga.getId(),
+        resolveErrorMessage(error));
     return transition(transactionSaga, SagaStatus.FAILED, resolveErrorMessage(error));
   }
 
   private Single<TransactionSaga> compensateSourceAccount(
       TransactionSaga transactionSaga, Throwable error) {
+    log.warn(
+        "Iniciando compensacion de saga. transactionId={}, error={}",
+        transactionSaga.getId(),
+        resolveErrorMessage(error));
     return transition(transactionSaga, SagaStatus.FAILED_COMPENSATING, resolveErrorMessage(error))
         .flatMap(
             failed ->
@@ -198,6 +229,10 @@ public class TransactionServiceImpl implements TransactionService {
                     .map(ignored -> failed)
                     .onErrorResumeNext(
                         compensationError -> {
+                          log.error(
+                              "Compensacion fallida. transactionId={}, error={}",
+                              failed.getId(),
+                              resolveErrorMessage(compensationError));
                           failed.setErrorMessage(
                               failed.getErrorMessage()
                                   + " | Compensacion manual requerida: "
@@ -213,6 +248,7 @@ public class TransactionServiceImpl implements TransactionService {
 
   private void validateDistinctEndpoints(String sourceId, String targetId, String operationName) {
     if (sourceId != null && sourceId.equals(targetId)) {
+      log.warn("Operacion rechazada por origen y destino iguales. operation={}", operationName);
       throw new IllegalArgumentException(
           "No se puede ejecutar la "
               + operationName
